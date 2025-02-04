@@ -1,0 +1,62 @@
+# Xcode
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+*.xcworkspace
+DerivedData
+xcuserdata
+*.moved-aside
+*.xcuserstate
+
+# Swift Package Manager
+.swiftpm/xcode/package.xcworkspace/
+
+# Build products
+build/
+Build/
+Products/
+
+# CocoaPods
+Podfile.lock
+Pods/
+
+# Carthage
+Carthage/Build/
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+
+# Apple-related files
+*.DS_Store
+*.swp
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Crash reports
+*.crash
+
+# Dependency managers
+/Carthage
+/Pods
+/node_modules
+
+# Configuration files
+.env
+
+Docs/
+Preview Content/
+
+.aidigestignore
+.cursorrules
+
+codebase.md 
+Assets.xcassets
