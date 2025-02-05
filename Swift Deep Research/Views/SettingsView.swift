@@ -5,7 +5,6 @@ struct SettingsView: View {
     @ObservedObject var appState: AppState
     
     var body: some View {
-        NavigationView {
             VStack(spacing: 20) {
                 Text("Settings")
                     .font(.headline)
@@ -39,7 +38,6 @@ struct SettingsView: View {
                 }
             }
         }
-    }
 }
 
 struct GeminiSettingsView: View {

@@ -17,4 +17,9 @@ extension ModelConfiguration: @retroactive Equatable {
     public static let qwen2_5_7b_1M_4bit = ModelConfiguration(
         id: "mlx-community/Qwen2.5-7B-Instruct-1M-4bit"
     )
+    
+    public static let deepseek_r1_qwen_14b_4bit = ModelConfiguration(
+        id: "mlx-community/DeepSeek-R1-Distill-Qwen-14B-4bit"
+    )
+    
 }

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Error definitions for the research process.
+// Error definitions for the research process.
 enum ResearchError: LocalizedError {
     case noSearchResults
     case tokenBudgetExceeded(currentUsage: Int, budget: Int)
@@ -18,14 +18,14 @@ enum ResearchError: LocalizedError {
     }
 }
 
-/// Agent configuration for tuning parameters.
+// Agent configuration for tuning parameters.
 struct AgentConfiguration {
     let stepSleep: UInt64         // in nanoseconds
     let maxAttempts: Int
     let tokenBudget: Int
 }
 
-/// The Agent state logs internal diary events.
+// The Agent state logs internal diary events.
 struct AgentDiary {
     private(set) var entries: [String] = []
     
@@ -41,7 +41,7 @@ struct AgentDiary {
     }
 }
 
-/// The Agent orchestrates web search, content extraction, LLM reasoning, and iterative research.
+// The Agent orchestrates web search, content extraction, LLM reasoning, and iterative research.
 @MainActor
 struct Agent {
     
@@ -56,7 +56,7 @@ struct Agent {
     private var gaps: [String] = []              // pending questions/subqueries
     private var visitedURLs: Set<URL> = []         // to avoid re-visiting pages
     
-    /// Keep track of token usage (as an example, this counter should be updated based on your LLM metrics)
+    // Keep track of token usage
     private var tokenUsage = 0
     
     init(searchService: SearchServiceProtocol,
@@ -74,7 +74,7 @@ struct Agent {
         self.config = config
     }
     
-    /// Main workflow method.
+    // Main workflow method.
     mutating func getResponse(for question: String, maxBadAttempts: Int = 3) async throws -> String {
         // RESET state
         gaps = [question]
@@ -106,7 +106,6 @@ struct Agent {
             let unvisitedResults = searchResults.filter { !visitedURLs.contains($0.url) }
             if unvisitedResults.isEmpty {
                 diary.add("All URLs already processed for query: \(currentQuestion)")
-                // If no more unvisited, continue with next query.
                 continue
             }
             
@@ -114,18 +113,18 @@ struct Agent {
             unvisitedResults.forEach { visitedURLs.insert($0.url) }
             diary.add("Collected \(unvisitedResults.count) new URL(s)")
             
-            // STEP 3: Concurrently fetch webpage contents.
+            // STEP 3: Concurrently fetch and extract webpage contents using improved approach.
             let webpages = try await fetchWebpagesContent(from: unvisitedResults)
             // Use aggregated content from all pages.
             let aggregatedContent = webpages.joined(separator: "\n\n")
             diary.add("Aggregated content from \(webpages.count) webpage(s)")
             
             // STEP 4: Build prompt with aggregated content and diary log.
-            // Note: We add the full diary log so that context and previous iterations are passed along.
             let prompt = buildPrompt(
                 for: currentQuestion,
                 aggregatedContent: aggregatedContent,
-                withDiary: diary.entries
+                diaryLog: diary.entries,
+                references: visitedURLs.map { $0.absoluteString }
             )
             diary.add("Built comprehensive prompt for LLM.")
             
@@ -141,7 +140,6 @@ struct Agent {
                 streaming: true
             )
             diary.add("Received response from LLM.")
-            // Increase token usage counter (using the character count as a proxy for tokens)
             tokenUsage += rawResponse.count
             
             let parseResult = LLMResponseParser.parse(from: rawResponse)
@@ -152,16 +150,16 @@ struct Agent {
             case .success(let response):
                 diary.add("LLM action: \(response.action), Thoughts: \(response.thoughts)")
                 
-                // Dispatch based on action:
                 switch response.action.lowercased() {
                 case "answer":
-                    // Updated: if answer is nonempty we allow slight ambiguity.
                     if let finalAnswer = response.answer, !finalAnswer.isEmpty {
                         diary.add("Answer action received. Evaluating definitiveness...")
-                        // Evaluate answer decisiveness based on our new heuristic (see isDefinitive below).
                         if isDefinitive(answer: finalAnswer) || finalAnswer.count > 20 {
                             diary.add("Answer is considered definitive enough.")
-                            return finalAnswer
+                            // Append references (the list of visited URLs) as citations.
+                            let references = visitedURLs.map { $0.absoluteString }
+                            let citationText = references.isEmpty ? "" : "\n\nSources:\n" + references.joined(separator: "\n")
+                            return finalAnswer + citationText
                         } else {
                             diary.add("Answer short/ambiguous; continuing research.")
                             badAttempts += 1
@@ -194,18 +192,18 @@ struct Agent {
                 }
             }
             
-            // If too many unsuccessful attempts, trigger beast mode.
             if badAttempts >= maxBadAttempts {
                 diary.add("Exceeded max bad attempts; triggering beast mode.")
                 let beastAnswer = try await beastModeAnswer(for: question)
-                return beastAnswer
+                let references = visitedURLs.map { $0.absoluteString }
+                let citationText = references.isEmpty ? "" : "\n\nSources:\n" + references.joined(separator: "\n")
+                return beastAnswer + citationText
             }
         }
     }
     
     // MARK: - Helper Methods
     
-    /// Ask the LLM to generate multiple distinct search queries based on the original topic.
     private mutating func generateSearchQueries(for question: String) async throws -> [String] {
         let prompt = """
         Given the research topic:
@@ -225,19 +223,16 @@ struct Agent {
         if let data = rawResponse.data(using: .utf8),
            let queryResponse = try? JSONDecoder().decode(QueryResponse.self, from: data) {
             diary.add("Generated \(queryResponse.queries.count) search query(ies) from LLM.")
-            return queryResponse.queries
+            return queryResponse.queries.filter { !$0.isEmpty }
         } else {
             diary.add("Falling back to original question as search query.")
             return [question]
         }
     }
     
-    /// Concurrently fetch search results for a given query.
     private mutating func fetchConcurrentSearchResults(for query: String) async throws -> [SearchResult] {
         var aggregatedResults: [SearchResult] = []
-        
-        let searchQueries = [query] // Can be extended if needed.
-        
+        let searchQueries = [query]
         try await withThrowingTaskGroup(of: [SearchResult].self) { group in
             for query in searchQueries {
                 group.addTask { [searchService] in
@@ -248,8 +243,7 @@ struct Agent {
                 aggregatedResults.append(contentsOf: results)
             }
         }
-        
-        // Deduplicate results by URL.
+        // Deduplicate by URL.
         var uniqueResults: [SearchResult] = []
         var seenURLs = Set<URL>()
         for result in aggregatedResults {
@@ -262,35 +256,38 @@ struct Agent {
         return uniqueResults
     }
     
-    /// Concurrently fetch webpage content from the given search results.
+    // Uses the enhanced web scraping that first parses the HTML with SwiftSoup,
+    // removes unwanted tags, and then extracts content from <article> or <main> (falling back to the body).
     private mutating func fetchWebpagesContent(from results: [SearchResult]) async throws -> [String] {
         var webpages: [String] = []
-        try await withThrowingTaskGroup(of: (URL, String).self) { group in
+        try await withThrowingTaskGroup(of: String.self) { group in
             for result in results {
                 group.addTask { [webReaderService] in
-                    // Try to fetch content. If the stripped content is too short, return the raw HTML.
-                    let content = try await webReaderService.fetchContent(from: result.url)
-                    let minContentLength = 30
-                    return (result.url, content.count < minContentLength ? String(data: try await Data(contentsOf: result.url), encoding: .utf8) ?? content : content)
+                    // First, try to extract content via our improved extraction.
+                    let stripped = try await webReaderService.fetchContent(from: result.url)
+                    let minContentLength = 100
+                    if stripped.count < minContentLength {
+                        // if too short, try to fetch raw HTML and then strip tags.
+                        let data = try Data(contentsOf: result.url)
+                        let html = String(data: data, encoding: .utf8) ?? stripped
+                        return html.strippingHTMLTags()
+                    }
+                    return stripped
                 }
             }
-            for try await (url, content) in group {
-                diary.add("Fetched content from \(url.absoluteString)")
+            for try await content in group {
+                diary.add("Fetched content from one webpage.")
                 webpages.append(content)
             }
         }
         return webpages
     }
     
-    /// Build a combined prompt for the LLM using current question, aggregated webpage content, and diary log.
     private func buildPrompt(for question: String,
                              aggregatedContent: String,
-                             withDiary diaryLog: [String]) -> String {
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateStyle = .medium
-        dateFormatter.timeStyle = .medium
-        let currentDate = dateFormatter.string(from: Date())
-        
+                             diaryLog: [String],
+                             references: [String]) -> String {
+        let currentDate = DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .medium)
         let jsonExample = """
         {
           "action": "answer",
@@ -303,20 +300,22 @@ struct Agent {
           ]
         }
         """
-        
         let prompt = """
         Current date: \(currentDate)
-
+        
         You are an advanced research assistant with multi-step reasoning. Your goal is to answer the question definitively based solely on the provided content. Extract relevant information and provide a clear, concise answer with a short explanation. Always include the extracted answer rather than referring to external sources.
-
+        
         ## Question:
         \(question)
-
+        
         ## Aggregated Webpage Content:
         \(aggregatedContent)
-
+        
         ## Research Diary:
         \(diaryLog.joined(separator: "\n"))
+        
+        ## References:
+        \(references.joined(separator: "\n"))
         
         ## Instructions:
         Based on the above, please provide one of the following actions:
@@ -330,8 +329,6 @@ struct Agent {
         return prompt
     }
     
-    /// Checks whether the given answer is definitive.
-    /// (Now: consider answers longer than a threshold or that avoid common hedge phrases as definitive.)
     private func isDefinitive(answer: String) -> Bool {
         let lower = answer.lowercased()
         if lower.contains("i don't know") ||
@@ -339,23 +336,14 @@ struct Agent {
             lower.contains("not available") {
             return false
         }
-        // If the answer is sufficiently long, consider it definitive
         return answer.count > 30
     }
     
-    /// A heuristic to decide if the answer is concrete and not just a referral to click a link.
-    private func isExtractedAnswer(_ text: String) -> Bool {
-        let lowerText = text.lowercased()
-        // Accept if it does not simply instruct to "visit a website"
-        return !lowerText.contains("visit") && !lowerText.contains("go to")
-    }
-    
-    /// In beast mode, use full accumulated context to generate a final answer.
     private mutating func beastModeAnswer(for question: String) async throws -> String {
         let accumulatedDiary = diary.log()
         let prompt = """
         **Beast Mode Activated**
-
+        
         You have attempted multiple iterations without producing a definitive answer. Based on the accumulated research context below, please provide your best educated, final answer to the question:
         
         \(question)
@@ -374,3 +362,4 @@ struct Agent {
         return finalAnswer
     }
 }
+

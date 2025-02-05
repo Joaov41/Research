@@ -26,7 +26,7 @@ enum LLMResponseError: Error, LocalizedError {
     }
 }
 
-/// A helper to parse and fix JSON.
+// A helper to parse and fix JSON.
 struct LLMResponseParser {
     
     static func parse(from jsonString: String) -> Result<LLMResponse, LLMResponseError> {
@@ -44,7 +44,7 @@ struct LLMResponseParser {
         return .failure(.parsing(jsonString))
     }
     
-    /// Attempts to extract only the JSON content from a string and does some simple fixes.
+    // Attempts to extract only the JSON content from a string and does some simple fixes.
     static func fixJSONIfNeeded(_ jsonString: String) -> String {
         // Trim leading/trailing whitespace and newlines.
         var fixed = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)

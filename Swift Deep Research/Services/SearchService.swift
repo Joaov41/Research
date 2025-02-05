@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import SwiftSoup
 
 struct SearchResult {
@@ -14,6 +15,9 @@ enum SearchError: Error {
 }
 
 class SearchService: SearchServiceProtocol {
+    private var cancellables = Set<AnyCancellable>()
+    
+    // Uses DuckDuckGo’s HTML page to extract results.
     func search(query: String) async throws -> [SearchResult] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else {
@@ -37,24 +41,28 @@ class SearchService: SearchServiceProtocol {
             throw SearchError.invalidResponse
         }
         
-        let doc = try SwiftSoup.parse(html)
-        let linkElements = try doc.select("a.result__a")
-        if linkElements.isEmpty() {
-            throw SearchError.noResultsFound
-        }
-        
-        var results: [SearchResult] = []
-        for element in linkElements.array() {
-            let title = try element.text()
-            let href = try element.attr("href")
-            var fixedHref = href
-            if href.hasPrefix("//") {
-                fixedHref = "https:" + href
+        do {
+            let doc = try SwiftSoup.parse(html)
+            let linkElements = try doc.select("a.result__a")
+            if linkElements.isEmpty() {
+                throw SearchError.noResultsFound
             }
-            if let resultURL = URL(string: fixedHref) {
-                results.append(SearchResult(title: title, url: resultURL))
+            
+            var results: [SearchResult] = []
+            for element in linkElements.array() {
+                let title = try element.text()
+                var href = try element.attr("href")
+                // Some links may be relative or protocol relative; fix them.
+                if href.hasPrefix("//") {
+                    href = "https:" + href
+                }
+                if let resultURL = URL(string: href) {
+                    results.append(SearchResult(title: title, url: resultURL))
+                }
             }
+            return results
+        } catch {
+            throw SearchError.invalidResponse
         }
-        return results
     }
 }
