@@ -69,7 +69,7 @@ struct ChatView_Previews: PreviewProvider {
     static var previews: some View {
         ChatView().environmentObject(ChatViewModel(
             searchService: SearchService(),
-            webReaderService: WebReaderService(),
+            webReaderService: WebContentExtractor.shared,
             llmProvider: AppState.shared.localLLMProvider
         ))
     }

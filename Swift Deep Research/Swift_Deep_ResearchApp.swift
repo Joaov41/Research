@@ -12,10 +12,14 @@ struct SwiftDeepResearchApp: App {
             ContentView()
                 .environmentObject(ChatViewModel(
                     searchService: SearchService(),
-                    webReaderService: WebReaderService(),
+                    webReaderService: WebContentExtractor.shared,
                     llmProvider: AppState.shared.activeLLMProvider
                 ))
                 .environmentObject(AppState.shared)
         }
     }
+}
+
+extension WebContentExtractor {
+    static let shared = WebContentExtractor()
 }

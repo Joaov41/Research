@@ -10,6 +10,7 @@ enum GeminiModel: String, CaseIterable {
     case oneflash = "gemini-1.5-flash-latest"
     case onepro = "gemini-1.5-pro-latest"
     case twoflash = "gemini-2.0-flash-exp"
+    case twopro = "gemini-2.0-pro-exp-02-05"
     
     var displayName: String {
         switch self {
@@ -17,6 +18,7 @@ enum GeminiModel: String, CaseIterable {
         case .oneflash: return "Gemini 1.5 Flash (fast & more intelligent)"
         case .onepro: return "Gemini 1.5 Pro (very intelligent, but slower & lower rate limit)"
         case .twoflash: return "Gemini 2.0 Flash (extremely intelligent & fast, recommended)"
+        case .twopro: return "Gemini 2.0 Pro (extremely intelligent)"
         }
     }
 }

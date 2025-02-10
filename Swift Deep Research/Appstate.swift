@@ -11,16 +11,14 @@ enum LLMType: String, CaseIterable, Identifiable {
 class AppState: ObservableObject {
     static let shared = AppState()
     
-    // Currently active provider type.
-    @Published var selectedLLMType: LLMType = .local
     
     // Local LLM provider.
     @Published var localLLMProvider: LocalLLMProvider
     
-    // Gemini configuration defaults.
-    @Published var geminiConfig = GeminiConfig(apiKey: "", modelName: GeminiModel.twoflash.rawValue)
-    // Gemini provider (initialized only when needed)
-    @Published var geminiProvider: GeminiProvider?
+    @Published var geminiProvider: GeminiProvider
+
+    // Current provider with UI binding support
+    @Published private(set) var currentProvider: String
     
     // Other properties
     @Published var customInstruction: String = ""
@@ -30,28 +28,64 @@ class AppState: ObservableObject {
     @Published var previousApplication: NSRunningApplication?
     
     private init() {
-        self.localLLMProvider = LocalLLMProvider()
-        // Initialize Gemini provider
+        // Read from AppSettings
+        let asettings = AppSettings.shared
+        self.currentProvider = asettings.currentProvider
+        
+        // Initialize Gemini
+        let geminiConfig = GeminiConfig(apiKey: asettings.geminiApiKey,
+                                        modelName: asettings.geminiModel.rawValue)
         self.geminiProvider = GeminiProvider(config: geminiConfig)
+        
+        /*
+        // Initialize OpenAI
+        let openAIConfig = OpenAIConfig(
+            apiKey: asettings.openAIApiKey,
+            baseURL: asettings.openAIBaseURL,
+            organization: asettings.openAIOrganization,
+            project: asettings.openAIProject,
+            model: asettings.openAIModel
+        )
+        self.openAIProvider = OpenAIProvider(config: openAIConfig)
+        
+        // Initialize Mistral
+        let mistralConfig = MistralConfig(
+            apiKey: asettings.mistralApiKey,
+            baseURL: asettings.mistralBaseURL,
+            model: asettings.mistralModel
+        )
+        self.mistralProvider = MistralProvider(config: mistralConfig)
+        
+        if asettings.openAIApiKey.isEmpty && asettings.geminiApiKey.isEmpty && asettings.mistralApiKey.isEmpty {
+            print("Warning: No API keys configured.")
+        }*/
+        
+        // Initialize local LLM Provider
+        self.localLLMProvider = LocalLLMProvider()
     }
     
     /// Returns the active LLMProvider based on current selection.
     /// ChatViewModel can use this property.
     var activeLLMProvider: LLMProviderProtocol {
-        switch selectedLLMType {
-        case .local:
-            return localLLMProvider
-        case .gemini:
-            // If geminiProvider is nil, instantiate it with current config.
-            if geminiProvider == nil {
-                geminiProvider = GeminiProvider(config: geminiConfig)
+            if currentProvider == "local" {
+                return localLLMProvider
+            }else {
+                return geminiProvider
             }
-            return geminiProvider!
-        }
+    }
+    
+    func setCurrentProvider(_ provider: String) {
+        currentProvider = provider
+        AppSettings.shared.currentProvider = provider
+        objectWillChange.send()  // Explicitly notify observers
     }
     
     /// Call when Gemini configuration is updated in settings.
-    func updateGeminiProvider() {
-        self.geminiProvider = GeminiProvider(config: geminiConfig)
+    func saveGeminiConfig(apiKey: String, model: GeminiModel) {
+        AppSettings.shared.geminiApiKey = apiKey
+        AppSettings.shared.geminiModel = model
+        
+        let config = GeminiConfig(apiKey: apiKey, modelName: model.rawValue)
+        geminiProvider = GeminiProvider(config: config)
     }
 }

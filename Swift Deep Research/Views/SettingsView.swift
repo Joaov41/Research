@@ -3,6 +3,11 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var appState: AppState
+    @State private var selectedProvider = UserDefaults.standard.string(forKey: "current_provider") ?? "gemini"
+    
+    // Gemini settings
+    @State private var geminiApiKey = UserDefaults.standard.string(forKey: "gemini_api_key") ?? ""
+    @State private var selectedGeminiModel = GeminiModel(rawValue: UserDefaults.standard.string(forKey: "gemini_model") ?? "gemini-1.5-flash-latest") ?? .oneflash
     
     var body: some View {
             VStack(spacing: 20) {
@@ -10,22 +15,40 @@ struct SettingsView: View {
                     .font(.headline)
                 
                 // Picker to choose between Local LLM and Gemini.
-                Picker("LLM Provider", selection: $appState.selectedLLMType) {
-                    ForEach(LLMType.allCases) { type in
-                        Text(type.rawValue).tag(type)
-                    }
+                Picker("Provider", selection: $selectedProvider) {
+                    Text("Gemini AI").tag("gemini")
+                    Text("Local LLM").tag("local")
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding()
                 
                 // Show setting view based on provider selected.
-                if appState.selectedLLMType == .local {
+                if selectedProvider == "local" {
                     LocalLLMSettingsView(evaluator: appState.localLLMProvider)
-                } else {
-                    GeminiSettingsView(appState: appState)
+                } else
+                if selectedProvider == "gemini" {
+                    Section("Gemini AI Settings") {
+                        TextField("API Key", text: $geminiApiKey)
+                            .textFieldStyle(.roundedBorder)
+                        
+                        Picker("Model", selection: $selectedGeminiModel) {
+                            ForEach(GeminiModel.allCases, id: \.self) { model in
+                                Text(model.displayName).tag(model)
+                            }
+                        }
+                        
+                        Button("Get API Key") {
+                            NSWorkspace.shared.open(URL(string: "https://aistudio.google.com/app/apikey")!)
+                        }
+                    }
                 }
                 
                 Spacer()
+                
+                Button("Save") {
+                    saveSettings()
+                }
+                .buttonStyle(.borderedProminent)
             }
             .padding()
             .frame(minWidth: 400, minHeight: 300)
@@ -38,49 +61,20 @@ struct SettingsView: View {
                 }
             }
         }
-}
-
-struct GeminiSettingsView: View {
-    @ObservedObject var appState: AppState
-    @State private var selectedModel: GeminiModel = .twoflash
-    @State private var apiKey: String = ""
     
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            GroupBox("Gemini Provider Settings") {
-                VStack(alignment: .leading, spacing: 12) {
-                    TextField("API Key", text: $apiKey)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    
-                    Picker("Model", selection: $selectedModel) {
-                        ForEach(GeminiModel.allCases, id: \.self) { model in
-                            Text(model.displayName).tag(model)
-                        }
-                    }
-                    .pickerStyle(MenuPickerStyle())
-                    
-                    Button("Save Gemini Settings") {
-                        // Update gemini configuration in app state.
-                        appState.geminiConfig.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                        appState.geminiConfig.modelName = selectedModel.rawValue
-                        appState.updateGeminiProvider()
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-                .padding(.vertical, 8)
-            }
-            .padding(.horizontal)
+    private func saveSettings() {
+        
+       
+        // Save provider-specific settings
+        if selectedProvider == "gemini" {
+            appState.saveGeminiConfig(apiKey: geminiApiKey, model: selectedGeminiModel)
         }
-        .onAppear {
-            // Preload the current values from appState.
-            self.apiKey = appState.geminiConfig.apiKey
-            if let currentModel = GeminiModel(rawValue: appState.geminiConfig.modelName) {
-                self.selectedModel = currentModel
-            }
-        }
+        
+        // Set current provider
+        appState.setCurrentProvider(selectedProvider)
+        
     }
 }
-
 
 struct LocalLLMSettingsView: View {
     @ObservedObject private var llmEvaluator: LocalLLMProvider
@@ -99,8 +93,8 @@ struct LocalLLMSettingsView: View {
             }
             GroupBox("Model Information") {
                 VStack(alignment: .leading, spacing: 8) {
-                    InfoRow(label: "Model", value: "Mistral Small 24B (4-bit Quantized)")
-                    InfoRow(label: "Size", value: "~13GB")
+                    InfoRow(label: "Model", value: "Qwen2.5-7B-Instruct-1M (4-bit Quantized)")
+                    InfoRow(label: "Size", value: "~8GB")
                     InfoRow(label: "Optimized", value: "Apple Silicon")
                 }
                 .padding(.vertical, 4)

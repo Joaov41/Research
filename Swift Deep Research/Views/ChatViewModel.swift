@@ -8,13 +8,14 @@ class ChatViewModel: ObservableObject {
     @Published var isResearching: Bool = false
     @Published var errorMessage: String? = nil
     @Published var showSettings: Bool = false
+    @Published var steps: [AgentStep] = []
 
     let searchService: SearchServiceProtocol
-    let webReaderService: WebReaderServiceProtocol
+    let webReaderService: ContentExtractor
     let llmProvider: LLMProviderProtocol
     
     init(searchService: SearchServiceProtocol,
-         webReaderService: WebReaderServiceProtocol,
+         webReaderService: ContentExtractor,
          llmProvider: LLMProviderProtocol) {
         self.searchService = searchService
         self.webReaderService = webReaderService
@@ -54,5 +55,19 @@ class ChatViewModel: ObservableObject {
             }
             isResearching = false
         }
+    }
+    
+    
+    func addStep(description: String,
+                 partialAnswer: String? = nil,
+                 references: [String] = [],
+                 isUserQuery: Bool = false) {
+        let step = AgentStep(
+            stepDescription: description,
+            partialAnswer: partialAnswer,
+            references: references,
+            isUserQuery: isUserQuery
+        )
+        steps.append(step)
     }
 }
